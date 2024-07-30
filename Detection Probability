@@ -1,0 +1,114 @@
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(ggpubr)
+library(readr)
+library(tidyr)
+library(dplyr)
+install.packages("colorspace")
+library(colorspace)
+hcl_palettes(plot=TRUE)
+
+# used in below and in plotting too
+elliott_sp_names <- c('Sminthopsis douglasi', 'Rattus villosissimus')
+camera_sp_names <- c('Sminthopsis douglasi', 'Rattus villosissimus')
+
+## Presence absence data: ID Count == cumulative number of positive IDs
+elliotts <- read_csv() 
+
+# Convert the data to a data frame if it's not already
+elliotts <- as.data.frame(elliotts)
+
+# Pivot the data using gather (an alternative to pivot_longer for older versions)
+elliotts_pivoted <- elliotts %>%
+  gather(key = "Species", value = "Presence", all_of(elliott_sp_names))
+
+# View the pivoted data
+print(elliotts_pivoted)
+
+cameras <- read_csv() 
+
+# Convert the data to a data frame if it's not already
+cameras <- as.data.frame(cameras)
+
+# Pivot the data using gather (an alternative to pivot_longer for older versions)
+cameras_pivoted <- cameras %>%
+  gather(key = "Species", value = "Presence", all_of(camera_sp_names))
+
+# View the pivoted data
+print(cameras_pivoted)
+
+# probability of species found with elliotts
+pr_elliotts <- elliotts_pivoted %>% group_by(Species) %>%
+  summarise(pr_pres = mean(Presence))
+
+#now with cameras
+
+pr_cameras <- cameras_pivoted %>% group_by(Species) %>%
+  summarise(pr_pres = mean(Presence)) #run all that as one chunk for it to work
+# this calculation assumes presence/absence of one species is binomial
+
+# Plot of presence/absence in n identifications
+
+# assuming binomially distributed
+binomail_prob_at_least_one <- function(n, p){
+  pbinom(0, n, p, lower.tail = F)
+}
+
+total_n <- 60000
+
+## making data frame to view values 
+
+interim_elliotts <- pr_elliotts %>% full_join(tibble(n = 1:total_n), by = character()) %>%
+  mutate(pr_at_least_one = binomail_prob_at_least_one(n, pr_pres))
+
+
+interim_cameras <- pr_cameras %>% full_join(tibble(n = 1:total_n), by = character()) %>%
+  mutate(pr_at_least_one = binomail_prob_at_least_one(n, pr_pres))
+
+# create data for plotting (not saved)
+plot_elliotts <- pr_elliotts %>% full_join(tibble(n = 1:total_n), by = character()) %>%
+  mutate(pr_at_least_one = binomail_prob_at_least_one(n, pr_pres)) %>%
+ 
+  # do plotting
+  ggplot(aes(x = n, y = pr_at_least_one, colour = Species)) +
+  geom_line(size=0.5) +
+  ylab(expression(Detection~probability~p[n])) + # Detection~probability == at least one positive detection of species
+  xlab("Live trap nights (n)") +
+  labs(colour = "Species", size = 12) + 
+  theme(legend.title = element_text(face = "bold"), legend.text = element_text(size = 10, colour = "Black", face = "italic"))
+
+plot_elliotts_ind <- plot_elliotts + scale_color_brewer(palette = "Paired")
+
+plot_elliotts_ind
+
+# create data for plotting (not saved)
+plot_cameras <- pr_cameras %>% full_join(tibble(n = 1:total_n), by = character()) %>%
+  mutate(pr_at_least_one = binomail_prob_at_least_one(n, pr_pres)) %>%
+  # do plotting
+  ggplot(aes(x = n, y = pr_at_least_one, colour = Species)) +
+  geom_line(size=0.5) +
+  ylab(expression(Detection~probability~p[n])) + # Detection~probability == at least one positive detection of species
+  xlab("Camera trap nights (n)") +
+  labs(colour = "Species", size = 12) + 
+  theme(legend.title = element_text(face = "bold"), legend.text = element_text(size = 10, colour = "Black", face = "italic"))
+
+plot_cameras_ind <- plot_cameras + scale_color_brewer(palette = "Paired")
+
+##Arrange plots to be in one figure
+unique_sp_names <- unique(c(elliott_sp_names,camera_sp_names))
+
+plot_elliotts_grp <- plot_elliotts + scale_color_brewer(palette = "Paired", limits = unique_sp_names)
+plot_cameras_grp <- plot_cameras + scale_color_brewer(palette = "Paired", limits = unique_sp_names)
+
+arrange <- ggarrange(plot_elliotts_grp, plot_cameras_grp, 
+                     ncol = 2, nrow = 1, labels = c("A", "B"), common.legend = TRUE, legend = "right") + 
+  theme(legend.text = element_text(face = "italic"))
+
+arrange
+
+ggsave(arrange, filename = "C:/Users/n11259736/OneDrive - Queensland University of Technology/Documents/Masters/Assesment/Thesis/Data analysis/detection probability/ggplots.tiff", width = 12, height = 5, device = 'tiff', dpi = 300)
+ggsave(plot_elliotts_ind, filename = "plots/presence-absence-elliotts.pdf", width = 6, height = 5)
+ggsave(plot_cameras_ind, filename = "plots/presence-absence-cameras.pdf", width = 6, height = 5)
+
+
